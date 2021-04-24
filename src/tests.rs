@@ -9,8 +9,8 @@ use super::*;
 
 #[test]
 fn new_is_default() {
-    let new = Poisson::<2>::new();
-    let default: Poisson<2> = Default::default();
+    let new = Poisson::<f64, 2>::new();
+    let default: Poisson<f64, 2> = Default::default();
 
     assert_eq!(new.dimensions, default.dimensions);
     assert_eq!(new.radius, default.radius);
@@ -20,12 +20,12 @@ fn new_is_default() {
 
 #[test]
 fn unseeded_is_non_deterministic() {
-    let a = Poisson::<2>::new().iter();
-    let b = Poisson::<2>::new().iter();
+    let a = Poisson::<f64, 2>::new().iter();
+    let b = Poisson::<f64, 2>::new().iter();
 
     assert!(a
         .zip(b)
-        .any(|(a, b)| a[0] - b[0] > Float::EPSILON || a[1] - b[1] > Float::EPSILON));
+        .any(|(a, b)| a[0] - b[0] > f64::EPSILON || a[1] - b[1] > f64::EPSILON));
 }
 
 #[test]
@@ -44,14 +44,14 @@ fn iter() {
     for _point in poisson.iter() {}
 
     // For more than 4 dimensions, use `Poisson` directly:
-    let mut poisson = Poisson::<7>::new();
+    let mut poisson = Poisson::<f64, 7>::new();
     poisson.with_dimensions([1.0; 7], 0.7);
     for _point in poisson.iter() {}
 }
 
 #[test]
 fn iter_does_not_consume() {
-    let poisson = Poisson::<2>::new();
+    let poisson = Poisson::<f64, 2>::new();
 
     for _point in poisson.iter() {}
 
@@ -60,68 +60,64 @@ fn iter_does_not_consume() {
 
 #[test]
 fn into_iter() {
-    let poisson = Poisson::<2>::new();
+    let poisson = Poisson::<f64, 2>::new();
 
     for _point in poisson {}
 }
 
 #[test]
 fn cell_size() {
-    let poisson1 = Poisson::<1>::new().with_dimensions([1.0], 0.1).iter();
-    let poisson2 = Poisson::<2>::new().with_dimensions([1.0; 2], 0.1).iter();
-    let poisson3 = Poisson::<3>::new().with_dimensions([1.0; 3], 0.1).iter();
-    let poisson4 = Poisson::<4>::new().with_dimensions([1.0; 4], 0.1).iter();
+    let poisson1 = Poisson::<f64, 1>::new().with_dimensions([1.0], 0.1).iter();
+    let poisson2 = Poisson::<f64, 2>::new().with_dimensions([1.0; 2], 0.1).iter();
+    let poisson3 = Poisson::<f64, 3>::new().with_dimensions([1.0; 3], 0.1).iter();
+    let poisson4 = Poisson::<f64, 4>::new().with_dimensions([1.0; 4], 0.1).iter();
 
-    assert_eq!(poisson1.cell_size, 0.1 / Float::from(1.0).sqrt());
-    assert_eq!(poisson2.cell_size, 0.1 / Float::from(2.0).sqrt());
-    assert_eq!(poisson3.cell_size, 0.1 / Float::from(3.0).sqrt());
-    assert_eq!(poisson4.cell_size, 0.1 / Float::from(4.0).sqrt());
+    assert_eq!(poisson1.cell_size, 0.1 / 1.0_f64.sqrt());
+    assert_eq!(poisson2.cell_size, 0.1 / 2.0_f64.sqrt());
+    assert_eq!(poisson3.cell_size, 0.1 / 3.0_f64.sqrt());
+    assert_eq!(poisson4.cell_size, 0.1 / 4.0_f64.sqrt());
 }
 
 #[test]
 fn n_dimensional_grid_size() {
     for n in 1..=3 {
-        let mut poisson0 = Poisson::<0>::new();
-        let mut poisson1 = Poisson::<1>::new();
-        let mut poisson2 = Poisson::<2>::new();
-        let mut poisson3 = Poisson::<3>::new();
-        let mut poisson4 = Poisson::<4>::new();
+        let mut poisson1 = Poisson::<f64, 1>::new();
+        let mut poisson2 = Poisson::<f64, 2>::new();
+        let mut poisson3 = Poisson::<f64, 3>::new();
+        let mut poisson4 = Poisson::<f64, 4>::new();
 
-        poisson0.dimensions = [];
-        poisson1.dimensions = [n as Float];
-        poisson2.dimensions = [n as Float; 2];
-        poisson3.dimensions = [n as Float; 3];
-        poisson4.dimensions = [n as Float; 4];
+        poisson1.dimensions = [n as f64];
+        poisson2.dimensions = [n as f64; 2];
+        poisson3.dimensions = [n as f64; 3];
+        poisson4.dimensions = [n as f64; 4];
 
-        let iter0 = poisson0.iter();
         let iter1 = poisson1.iter();
         let iter2 = poisson2.iter();
         let iter3 = poisson3.iter();
         let iter4 = poisson4.iter();
 
-        assert_eq!(iter0.grid.len(), 1);
         assert_eq!(
             iter1.grid.len(),
-            (n as Float / iter1.cell_size).ceil() as usize
+            (n as f64 / iter1.cell_size).ceil() as usize
         );
         assert_eq!(
             iter2.grid.len(),
-            ((n as Float / iter2.cell_size).ceil() as usize).pow(2)
+            ((n as f64 / iter2.cell_size).ceil() as usize).pow(2)
         );
         assert_eq!(
             iter3.grid.len(),
-            ((n as Float / iter3.cell_size).ceil() as usize).pow(3)
+            ((n as f64 / iter3.cell_size).ceil() as usize).pow(3)
         );
         assert_eq!(
             iter4.grid.len(),
-            ((n as Float / iter4.cell_size).ceil() as usize).pow(4)
+            ((n as f64 / iter4.cell_size).ceil() as usize).pow(4)
         );
     }
 }
 
 #[test]
 fn n_dimensional_cell_to_idx() {
-    let poisson = Poisson::<3> {
+    let poisson = Poisson3D {
         dimensions: [3., 3., 3.],
         ..Default::default()
     };
@@ -134,7 +130,7 @@ fn n_dimensional_cell_to_idx() {
     assert_eq!(iter.cell_to_idx([1, 2, 1]), 16);
     assert_eq!(iter.cell_to_idx([2, 1, 1]), 22);
 
-    let poisson = Poisson::<2> {
+    let poisson = Poisson2D {
         dimensions: [3., 3.],
         ..Default::default()
     };
@@ -150,7 +146,7 @@ fn n_dimensional_cell_to_idx() {
 
 #[test]
 fn n_dimensional_point_to_cell() {
-    let poisson = Poisson::<3> {
+    let poisson = Poisson3D {
         dimensions: [3., 3., 3.],
         ..Default::default()
     };
@@ -163,7 +159,7 @@ fn n_dimensional_point_to_cell() {
     assert_eq!(iter.point_to_cell([1., 2., 1.]), [0, 1, 0]);
     assert_eq!(iter.point_to_cell([2., 3., 1.]), [1, 1, 0]);
 
-    let poisson = Poisson::<2> {
+    let poisson = Poisson2D {
         dimensions: [3., 3.],
         ..Default::default()
     };
@@ -179,7 +175,7 @@ fn n_dimensional_point_to_cell() {
 
 #[test]
 fn sample_to_grid() {
-    let iter = Poisson::<2>::new().iter();
+    let iter = Poisson2D::new().iter();
 
     for &point in &[[0.0, 0.0], [0.5, 0.5], [1.0, 1.0]] {
         let idx = iter.point_to_idx(point);
@@ -192,7 +188,7 @@ fn sample_to_grid() {
 
 #[test]
 fn adding_points() {
-    let mut iter = Poisson::<2>::new().iter();
+    let mut iter = Poisson2D::new().iter();
     let point = [0.5, 0.5];
 
     iter.add_point(point);
@@ -206,14 +202,14 @@ fn adding_points() {
 #[test]
 #[should_panic]
 fn point_generation_panics_with_no_point() {
-    let mut iter = Poisson::<2>::new().iter();
+    let mut iter = Poisson2D::new().iter();
 
     iter.generate_random_point();
 }
 
 #[test]
 fn point_generation_lies_within_radius() {
-    let mut iter = Poisson::<2>::new().iter();
+    let mut iter = Poisson2D::new().iter();
     iter.next(); // Ensures there is a current point
 
     let (initial, _) = iter.current_sample.unwrap();
@@ -224,14 +220,14 @@ fn point_generation_lies_within_radius() {
             .iter()
             .zip(initial.iter())
             .map(|(a, b)| (a - b).powi(2))
-            .sum::<Float>()
+            .sum::<f64>()
             .sqrt();
 
         assert!(r > iter.distribution.radius);
         assert!(r < iter.distribution.radius * 2.);
     }
 
-    let mut iter = Poisson::<3>::new().iter();
+    let mut iter = Poisson3D::new().iter();
     iter.next(); // Ensures there is a current point
 
     let (initial, _) = iter.current_sample.unwrap();
@@ -242,7 +238,7 @@ fn point_generation_lies_within_radius() {
             .iter()
             .zip(initial.iter())
             .map(|(a, b)| (a - b).powi(2))
-            .sum::<Float>()
+            .sum::<f64>()
             .sqrt();
 
         assert!(r > iter.distribution.radius);
@@ -252,7 +248,7 @@ fn point_generation_lies_within_radius() {
 
 #[test]
 fn generate_random_point() {
-    let mut iter = Poisson::<2>::new().iter();
+    let mut iter = Poisson::<f64, 2>::new().iter();
     iter.current_sample = Some(([0.5, 0.5], 0));
 
     for _ in 0..100 {
@@ -267,7 +263,7 @@ fn generate_random_point() {
 
 #[test]
 fn in_space() {
-    let iter = Poisson::<2>::new().iter();
+    let iter = Poisson::<f64, 2>::new().iter();
 
     // Affirmative tests
     assert!(iter.in_space([0.0, 0.0]));
@@ -281,7 +277,7 @@ fn in_space() {
 
 #[test]
 fn empty_grid_has_no_neighbors() {
-    let mut iter = Poisson::<2>::new().iter();
+    let mut iter = Poisson::<f64, 2>::new().iter();
     // Flush the grid
     iter.grid = vec![None; iter.grid.len()];
 
@@ -292,7 +288,7 @@ fn empty_grid_has_no_neighbors() {
 
 #[test]
 fn distant_point_has_no_neighbors() {
-    let mut iter = Poisson::<2>::new().iter();
+    let mut iter = Poisson::<f64, 2>::new().iter();
     // Flush the grid
     iter.grid = vec![None; iter.grid.len()];
 
@@ -306,7 +302,7 @@ fn distant_point_has_no_neighbors() {
 
 #[test]
 fn point_has_neighbors() {
-    let mut iter = Poisson::<2>::new().iter();
+    let mut iter = Poisson::<f64, 2>::new().iter();
     // Flush the grid
     iter.grid = vec![None; iter.grid.len()];
 
@@ -319,7 +315,7 @@ fn point_has_neighbors() {
 
 #[test]
 fn out_of_bounds_point_is_not_neighbor() {
-    let mut iter = Poisson::<2>::new().iter();
+    let mut iter = Poisson::<f64, 2>::new().iter();
     // Flush the grid
     iter.grid = vec![None; iter.grid.len()];
 
@@ -335,5 +331,5 @@ fn out_of_bounds_point_is_not_neighbor() {
 fn into_vec() {
     let poisson = Poisson2D::new();
 
-    let _vec: Vec<[Float; 2]> = Vec::from(poisson);
+    let _vec: Vec<[f64; 2]> = Vec::from(poisson);
 }

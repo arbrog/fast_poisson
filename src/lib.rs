@@ -109,9 +109,12 @@
 //! let points_4d = points_4d.iter();
 //!
 //! // For more than 4 dimensions, use `Poisson` directly:
-//! let mut points_7d = Poisson::<7>::new();
+//! let mut points_7d = Poisson::<f64, 7>::new();
 //! points_7d.with_dimensions([1.0; 7], 0.6);
 //! let points_7d = points_7d.iter();
+//! 
+//! // You can also choose single-precision floating-point types:
+//! let mut points_f32 = Poisson::<f32, 2>::new().generate();
 //! ```
 //!
 //! # Upgrading
@@ -175,21 +178,19 @@
 #[cfg(test)]
 mod tests;
 
+use num_traits::Float;
 use rand::prelude::*;
+use rand::distributions::Standard;
 use rand_distr::StandardNormal;
-use std::iter::FusedIterator;
+use std::iter::{FusedIterator, Sum};
+use std::fmt::Display;
 
 /// [`Poisson`] disk distribution in 2 dimensions
-pub type Poisson2D = Poisson<2>;
+pub type Poisson2D = Poisson<f64, 2>;
 /// [`Poisson`] disk distribution in 3 dimensions
-pub type Poisson3D = Poisson<3>;
+pub type Poisson3D = Poisson<f64, 3>;
 /// [`Poisson`] disk distribution in 4 dimensions
-pub type Poisson4D = Poisson<4>;
-
-#[cfg(not(feature = "single_precision"))]
-type Float = f64;
-#[cfg(feature = "single_precision")]
-type Float = f32;
+pub type Poisson4D = Poisson<f64, 4>;
 
 /// Poisson disk distribution in N dimensions
 ///
@@ -197,18 +198,26 @@ type Float = f32;
 /// depends upon the volume of the space: for higher-order dimensions you may need to [increase the
 /// radius](Poisson::with_dimensions) to achieve the desired level of performance.
 #[derive(Debug, Clone)]
-pub struct Poisson<const N: usize> {
+pub struct Poisson<F: Float + Sum + Display, const N: usize>
+where
+    Standard: Distribution<F>,
+    StandardNormal: Distribution<F>,
+{
     /// Dimensions of the box
-    dimensions: [Float; N],
+    dimensions: [F; N],
     /// Radius around each point that must remain empty
-    radius: Float,
+    radius: F,
     /// Seed to use for the internal RNG
     seed: Option<u64>,
     /// Number of samples to generate and test around each point
     num_samples: u32,
 }
 
-impl<const N: usize> Poisson<N> {
+impl<F: Float + Sum + Display, const N: usize> Poisson<F, N>
+where
+    Standard: Distribution<F>,
+    StandardNormal: Distribution<F>,
+{
     /// Create a new Poisson disk distribution
     ///
     /// By default, `Poisson` will sample each dimension from the semi-open range [0.0, 1.0), using
@@ -244,7 +253,7 @@ impl<const N: usize> Poisson<N> {
     ///     && p[2] >= 0.0 && p[2] < 5.0
     /// }));
     /// ```
-    pub fn with_dimensions(&mut self, dimensions: [Float; N], radius: Float) -> &mut Self {
+    pub fn with_dimensions(&mut self, dimensions: [F; N], radius: F) -> &mut Self {
         self.dimensions = dimensions;
         self.radius = radius;
 
@@ -296,7 +305,7 @@ impl<const N: usize> Poisson<N> {
     /// }
     /// ```
     #[must_use]
-    pub fn iter(&self) -> PoissonIter<N> {
+    pub fn iter(&self) -> PoissonIter<F, N> {
         PoissonIter::new(self.clone())
     }
 
@@ -324,25 +333,33 @@ impl<const N: usize> Poisson<N> {
     /// // These are identical because a seed was specified
     /// assert!(points3.iter().zip(points4.iter()).all(|(a, b)| a == b));
     /// ```
-    pub fn generate(&self) -> Vec<Point<N>> {
+    pub fn generate(&self) -> Vec<Point<F, N>> {
         self.iter().collect()
     }
 }
 
-impl<const N: usize> Default for Poisson<N> {
+impl<F: Float + Sum + Display, const N: usize> Default for Poisson<F, N> 
+where
+    Standard: Distribution<F>,
+    StandardNormal: Distribution<F>,
+{
     fn default() -> Self {
-        Poisson::<N> {
-            dimensions: [1.0; N],
-            radius: 0.1,
+        Poisson::<F, N> {
+            dimensions: [F::from(1.0).unwrap(); N],
+            radius: F::from(0.1).unwrap(),
             seed: None,
             num_samples: 30,
         }
     }
 }
 
-impl<const N: usize> IntoIterator for Poisson<N> {
-    type Item = Point<N>;
-    type IntoIter = PoissonIter<N>;
+impl<F: Float + Sum + Display, const N: usize> IntoIterator for Poisson<F, N>  
+where
+    Standard: Distribution<F>,
+    StandardNormal: Distribution<F>,
+{
+    type Item = Point<F, N>;
+    type IntoIter = PoissonIter<F, N>;
 
     fn into_iter(self) -> Self::IntoIter {
         PoissonIter::new(self)
@@ -350,17 +367,19 @@ impl<const N: usize> IntoIterator for Poisson<N> {
 }
 
 /// For convenience allow converting to a Vec directly from Poisson
-impl<T, const N: usize> From<Poisson<N>> for Vec<T>
+impl<F: Float + Sum + Display, T, const N: usize> From<Poisson<F, N>> for Vec<T>
 where
-    T: From<[Float; N]>,
+    T: From<[F; N]>,
+    Standard: Distribution<F>,
+    StandardNormal: Distribution<F>,
 {
-    fn from(poisson: Poisson<N>) -> Vec<T> {
+    fn from(poisson: Poisson<F, N>) -> Vec<T> {
         poisson.iter().map(|point| point.into()).collect()
     }
 }
 
-/// A Point is simply an array of Float values
-type Point<const N: usize> = [Float; N];
+/// A Point is simply an array of F values
+type Point<F, const N: usize> = [F; N];
 
 /// A Cell is the grid coordinates containing a given point
 type Cell<const N: usize> = [isize; N];
@@ -371,26 +390,34 @@ type Rand = rand_xoshiro::Xoshiro256StarStar;
 type Rand = rand_xoshiro::Xoshiro128StarStar;
 
 /// An iterator over the points in the Poisson disk distribution
-pub struct PoissonIter<const N: usize> {
+pub struct PoissonIter<F: Float + Sum + Display, const N: usize>
+where
+    Standard: Distribution<F>,
+    StandardNormal: Distribution<F>,
+{
     /// The distribution from which this iterator was built
-    distribution: Poisson<N>,
+    distribution: Poisson<F, N>,
     /// The RNG
     rng: Rand,
     /// The size of each cell in the grid
-    cell_size: Float,
+    cell_size: F,
     /// The grid stores spatially-oriented samples for fast checking of neighboring sample points
-    grid: Vec<Option<Point<N>>>,
+    grid: Vec<Option<Point<F, N>>>,
     /// A list of valid points that we have not yet visited
-    active: Vec<Point<N>>,
+    active: Vec<Point<F, N>>,
     /// The current point we are visiting to generate and test surrounding points
-    current_sample: Option<(Point<N>, u32)>,
+    current_sample: Option<(Point<F, N>, u32)>,
 }
 
-impl<const N: usize> PoissonIter<N> {
+impl<F: Float + Sum + Display, const N: usize> PoissonIter<F, N>
+where
+    Standard: Distribution<F>,
+    StandardNormal: Distribution<F>,
+{
     /// Create an iterator over the specified distribution
-    fn new(distribution: Poisson<N>) -> Self {
+    fn new(distribution: Poisson<F, N>) -> Self {
         // We maintain a grid of our samples for faster radius checking
-        let cell_size = distribution.radius / (N as Float).sqrt();
+        let cell_size = distribution.radius / (F::from(N).expect("Converting a const usize to Float should never fail")).sqrt();
 
         // If we were not given a seed, generate one non-deterministically
         let mut rng = match distribution.seed {
@@ -400,16 +427,24 @@ impl<const N: usize> PoissonIter<N> {
 
         // Calculate the amount of storage we'll need for our n-dimensional grid, which is stored
         // as a single-dimensional array.
-        let grid_size: usize = distribution
-            .dimensions
-            .iter()
-            .map(|n| (n / cell_size).ceil() as usize)
-            .product();
+        let grid_size: usize = {
+            distribution
+                .dimensions
+                .iter()
+                .map(|&n| {
+                    (n / cell_size).ceil()
+                })
+                .reduce(|acc, n| acc * n)
+                .unwrap()
+                .to_usize()
+                .unwrap()
+        };
 
         // We have to generate an initial point, just to ensure we've got *something* in the active list
-        let mut first_point = [0.0; N];
+        let mut first_point = [F::from(0.0).unwrap(); N];
         for (i, dim) in first_point.iter_mut().zip(distribution.dimensions.iter()) {
-            *i = rng.gen::<Float>() * dim;
+            let r: F = rng.gen();
+            *i = r * *dim;
         }
 
         let mut iter = PoissonIter {
@@ -427,7 +462,7 @@ impl<const N: usize> PoissonIter<N> {
     }
 
     /// Add a point to our pattern
-    fn add_point(&mut self, point: Point<N>) {
+    fn add_point(&mut self, point: Point<F, N>) {
         // Add it to the active list
         self.active.push(point);
 
@@ -437,11 +472,11 @@ impl<const N: usize> PoissonIter<N> {
     }
 
     /// Convert a point into grid cell coordinates
-    fn point_to_cell(&self, point: Point<N>) -> Cell<N> {
+    fn point_to_cell(&self, point: Point<F, N>) -> Cell<N> {
         let mut cell = [0_isize; N];
 
         for i in 0..N {
-            cell[i] = (point[i] / self.cell_size) as isize;
+            cell[i] = (point[i] / self.cell_size).to_isize().unwrap();
         }
 
         cell
@@ -451,13 +486,15 @@ impl<const N: usize> PoissonIter<N> {
     fn cell_to_idx(&self, cell: Cell<N>) -> usize {
         cell.iter()
             .zip(self.distribution.dimensions.iter())
-            .fold(0, |acc, (pn, dn)| {
-                acc * (dn / self.cell_size) as usize + *pn as usize
+            .fold(F::from(0.0).unwrap(), |acc, (pn, dn)| {
+                acc * (*dn / self.cell_size) + F::from(*pn).unwrap()
             })
+            .to_usize()
+            .unwrap()
     }
 
     /// Convert a point into a grid vector index
-    fn point_to_idx(&self, point: Point<N>) -> usize {
+    fn point_to_idx(&self, point: Point<F, N>) -> usize {
         self.cell_to_idx(self.point_to_cell(point))
     }
 
@@ -466,19 +503,20 @@ impl<const N: usize> PoissonIter<N> {
     /// # Panics
     ///
     /// Will panic if `current_sample` is None
-    fn generate_random_point(&mut self) -> Point<N> {
+    fn generate_random_point(&mut self) -> Point<F, N> {
         let mut point = self.current_sample.unwrap().0;
 
         // Pick a random distance away from our point
-        let dist = self.distribution.radius * (1.0 + self.rng.gen::<Float>());
+        let r: F = self.rng.gen();
+        let dist = self.distribution.radius * (F::from(1.0).unwrap() + r);
 
         // Generate a randomly distributed vector
-        let mut vector: [Float; N] = [0.0; N];
+        let mut vector: [F; N] = [F::from(0.0).unwrap(); N];
         for i in vector.iter_mut() {
             *i = self.rng.sample(StandardNormal);
         }
         // Now find this new vector's magnitude
-        let mag = vector.iter().map(|&x| x.powi(2)).sum::<Float>().sqrt();
+        let mag = vector.iter().map(|&x| x.powi(2)).sum::<F>().sqrt();
 
         // Dividing each of the vector's components by `mag` will produce a unit vector; then by
         // multiplying each component by `dist`, we'll have a vector pointing `dist` away from the
@@ -487,7 +525,7 @@ impl<const N: usize> PoissonIter<N> {
         // Conveniently, we can do all of this in just one step!
         let translate = dist / mag; // compute this just once!
         for i in 0..N {
-            point[i] += vector[i] * translate;
+            point[i] = point[i] + vector[i] * translate;
         }
 
         point
@@ -496,11 +534,12 @@ impl<const N: usize> PoissonIter<N> {
     /// Returns true if the point is within the bounds of our space.
     ///
     /// This is true if 0 ≤ point[i] < dimensions[i]
-    fn in_space(&self, point: Point<N>) -> bool {
+    fn in_space(&self, point: Point<F, N>) -> bool {
+        let zero = F::from(0.0).unwrap();
         point
             .iter()
             .zip(self.distribution.dimensions.iter())
-            .all(|(p, d)| *p >= 0. && p < d)
+            .all(|(p, d)| *p >= zero && p < d)
     }
 
     /// Returns true if the cell is within the bounds of our grid.
@@ -509,11 +548,11 @@ impl<const N: usize> PoissonIter<N> {
     fn in_grid(&self, cell: Cell<N>) -> bool {
         cell.iter()
             .zip(self.distribution.dimensions.iter())
-            .all(|(c, d)| *c >= 0 && *c < (*d / self.cell_size).ceil() as isize)
+            .all(|(c, d)| *c >= 0 && F::from(*c).unwrap() < (*d / self.cell_size).ceil())
     }
 
     /// Returns true if there is at least one other sample point within `radius` of this point
-    fn in_neighborhood(&self, point: Point<N>) -> bool {
+    fn in_neighborhood(&self, point: Point<F, N>) -> bool {
         let cell = self.point_to_cell(point);
 
         // We'll compare to distance squared, so we can skip the square root operation for better performance
@@ -543,8 +582,8 @@ impl<const N: usize> PoissonIter<N> {
                 let neighbor_dist_squared = point
                     .iter()
                     .zip(point2.iter())
-                    .map(|(a, b)| (a - b).powi(2))
-                    .sum::<Float>();
+                    .map(|(a, b)| (*a - *b).powi(2))
+                    .sum::<F>();
 
                 if neighbor_dist_squared < r_squared {
                     return true;
@@ -557,10 +596,14 @@ impl<const N: usize> PoissonIter<N> {
     }
 }
 
-impl<const N: usize> Iterator for PoissonIter<N> {
-    type Item = Point<N>;
+impl<F: Float + Sum + Display, const N: usize> Iterator for PoissonIter<F, N>
+where
+    Standard: Distribution<F>,
+    StandardNormal: Distribution<F>,
+{
+    type Item = Point<F, N>;
 
-    fn next(&mut self) -> Option<Point<N>> {
+    fn next(&mut self) -> Option<Point<F, N>> {
         if self.current_sample == None && !self.active.is_empty() {
             // Pop points off our active list until it's exhausted
             let point = {
@@ -597,7 +640,11 @@ impl<const N: usize> Iterator for PoissonIter<N> {
     }
 }
 
-impl<const N: usize> FusedIterator for PoissonIter<N> {}
+impl<F: Float + Sum + Display, const N: usize> FusedIterator for PoissonIter<F, N>
+where
+    Standard: Distribution<F>,
+    StandardNormal: Distribution<F>,
+{}
 
 // Hacky way to include README in doc-tests, but works until #[doc(include...)] is stabilized
 // https://github.com/rust-lang/cargo/issues/383#issuecomment-720873790
