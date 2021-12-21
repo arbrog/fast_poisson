@@ -162,12 +162,22 @@ mod tests;
 mod iter;
 pub use iter::{Iter, Point};
 
+mod fast_poisson_variable_density;
+pub use fast_poisson_variable_density::{Iter as Var_iter, Point as Var_point};
+
 /// [`Poisson`] disk distribution in 2 dimensions
 pub type Poisson2D = Poisson<2>;
 /// [`Poisson`] disk distribution in 3 dimensions
 pub type Poisson3D = Poisson<3>;
 /// [`Poisson`] disk distribution in 4 dimensions
 pub type Poisson4D = Poisson<4>;
+
+/// [`PoissonVariable`] disk distribution in 2 dimensions
+pub type PoissonVariable2D = PoissonVariable<2>;
+/// [`PoissonVariable`] disk distribution in 3 dimensions
+pub type PoissonVariable3D = PoissonVariable<3>;
+/// [`PoissonVariable`] disk distribution in 4 dimensions
+pub type PoissonVariable4D = PoissonVariable<4>;
 
 #[cfg(not(feature = "single_precision"))]
 type Float = f64;
@@ -427,4 +437,133 @@ mod test_readme {
     }
 
     external_doc_test!(include_str!("../README.md"));
+}
+
+//variable radii
+/// Poisson disk distribution in N dimensions
+///
+/// Distributions can be generated for any non-negative number of dimensions, although performance
+/// depends upon the volume of the space: for higher-order dimensions you may need to [increase the
+/// radius](Poisson::with_dimensions) to achieve the desired level of performance.
+///
+/// # Equality
+///
+/// `Poisson` implements `PartialEq` but not `Eq`, because without a specified seed the output of
+/// even the same object will be different. That is, the equality of two `Poisson`s is based not on
+/// whether or not they were built with the same parameters, but rather on whether or not they will
+/// produce the same results once the distribution is generated.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "derive_serde", derive(Serialize, Deserialize))]
+pub struct PoissonVariable<const N: usize> {
+    /// Dimensions of the box
+    #[cfg_attr(feature = "derive_serde", serde(with = "serde_arrays"))]
+    dimensions: [Float; N],
+    /// Radius around each point that must remain empty
+    radius: Float,
+    /// Seed to use for the internal RNG
+    seed: Option<u64>,
+    /// Number of samples to generate and test around each point
+    num_samples: u32,
+}
+
+impl<const N: usize> PoissonVariable<N> {
+    /// Create a new Poisson disk distribution
+    ///
+    /// By default, `Poisson` will sample each dimension from the semi-open range [0.0, 1.0), using
+    /// a radius of 0.1 around each point, and up to 30 random samples around each; the resulting
+    /// output will be non-deterministic, meaning it will be different each time.
+    ///
+    /// See [`Poisson::with_dimensions`] to change the range and radius, [`Poisson::with_samples`]
+    /// to change the number of random samples for each point, and [`Poisson::with_seed`] to produce
+    /// repeatable results.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_dimensions(&mut self, dimensions: [Float; N], radius: Float) -> &mut Self {
+        self.dimensions = dimensions;
+        self.radius = radius;
+
+        self
+    }
+
+    pub fn with_seed(&mut self, seed: u64) -> &mut Self {
+        self.seed = Some(seed);
+
+        self
+    }
+
+    pub fn with_samples(&mut self, samples: u32) -> &mut Self {
+        self.num_samples = samples;
+
+        self
+    }
+
+    #[must_use]
+    pub fn iter(&self) -> Var_iter<N> {
+        Var_iter::new(self.clone())
+    }
+
+    pub fn generate(&self) -> Vec<Point<N>> {
+        self.iter().collect()
+    }
+
+    pub fn to_vec<T>(&self) -> Vec<T>
+    where
+        T: From<[Float; N]>,
+    {
+        self.iter().map(|point| point.into()).collect()
+    }
+}
+
+/// No object is equal, not even to itself, if the seed is unspecified
+impl<const N: usize> PartialEq for PoissonVariable<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.seed.is_some()
+            && other.seed.is_some()
+            && self.dimensions == other.dimensions
+            && self.radius == other.radius
+            && self.seed == other.seed
+            && self.num_samples == other.num_samples
+    }
+}
+
+impl<const N: usize> Default for PoissonVariable<N> {
+    fn default() -> Self {
+        PoissonVariable::<N> {
+            dimensions: [1.0; N],
+            radius: 0.1,
+            seed: None,
+            num_samples: 30,
+        }
+    }
+}
+
+impl<const N: usize> IntoIterator for PoissonVariable<N> {
+    type Item = Var_point<N>;
+    type IntoIter = Var_iter<N>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Var_iter::new(self)
+    }
+}
+
+impl<const N: usize> IntoIterator for &PoissonVariable<N> {
+    type Item = Var_point<N>;
+    type IntoIter = Var_iter<N>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// For convenience allow converting to a Vec directly from Poisson
+impl<T, const N: usize> From<PoissonVariable<N>> for Vec<T>
+where
+    T: From<[Float; N]>,
+{
+    fn from(poisson: PoissonVariable<N>) -> Vec<T> {
+        poisson.to_vec()
+    }
 }
