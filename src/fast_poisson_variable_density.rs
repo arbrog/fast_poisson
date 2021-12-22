@@ -34,7 +34,7 @@ pub struct Iter<const N: usize> {
     /// The size of each cell in the grid
     cell_size: Float,
     /// The grid stores spatially-oriented samples for fast checking of neighboring sample points
-    grid: Vec<Option<Point<N>>>,
+    grid: Vec<Vec<Point<N>>>,
     /// A list of valid points that we have not yet visited
     active: Vec<Point<N>>,
 }
@@ -69,7 +69,7 @@ impl<const N: usize> Iter<N> {
             distribution,
             rng,
             cell_size,
-            grid: vec![None; grid_size],
+            grid: Vec::new(),
             active: Vec::new(),
         };
         // Don't forget to add our initial point
@@ -85,7 +85,8 @@ impl<const N: usize> Iter<N> {
 
         // Now stash this point in our grid
         let idx = self.point_to_idx(point);
-        self.grid[idx] = Some(point);
+
+        self.grid[idx].push(point);
     }
 
     /// Convert a point into grid cell coordinates
@@ -169,6 +170,51 @@ impl<const N: usize> Iter<N> {
         for mut carry in 0.. {
             let mut neighbor = cell;
 
+            // We can add our current iteration count to visit each neighbor cell
+            for i in (&mut neighbor).iter_mut() {
+                // We clamp our addition to the range [-2, 2] for each cell
+                *i += carry % 5 - 2;
+                // Since we modulo by 5 to get the right range, integer division by 5 "advances" us
+                carry /= 5;
+            }
+
+            if carry > 0 {
+                // If we've "overflowed" then we've already tested every neighbor cell
+                return false;
+            }
+            if !self.in_grid(neighbor) {
+                // Skip anything beyond the bounds of our grid
+                continue;
+            }
+
+            // if let Some(point2) = self.grid[self.cell_to_idx(neighbor)] {
+            //     let neighbor_dist_squared = point
+            //         .iter()
+            //         .zip(point2.iter())
+            //         .map(|(a, b)| (a - b).powi(2))
+            //         .sum::<Float>();
+
+            //     if neighbor_dist_squared < r_squared {
+            //         return true;
+            //     }
+            // }
+        }
+
+        // Rust can't tell the previous loop will always reach one of the `return` statements...
+        false
+    }
+
+    fn get_potential_effected(&self, point: Point<N>) -> Vec<Point<N>> {
+        let cell = self.point_to_cell(point);
+
+        // We'll compare to distance squared, so we can skip the square root operation for better performance
+        let r_squared = self.distribution.radius.powi(2);
+
+        // ceil(r_j/r_min)
+        let point_tile_effect_range = (self.distribution.radius / self.distribution.radius).ceil();
+
+        for mut carry in 0.. {
+            let mut neighbor = cell;
             // We can add our current iteration count to visit each neighbor cell
             for i in (&mut neighbor).iter_mut() {
                 // We clamp our addition to the range [-2, 2] for each cell
