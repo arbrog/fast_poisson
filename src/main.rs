@@ -2,7 +2,7 @@ use bracket_noise::prelude::*;
 use fast_poisson::PoissonVariable2D;
 
 fn main() {
-    let dim = 20_f64;
+    let dim = 48.0;
     let r_min = 1.0;
     let r_max = 2.0;
     let k = 30;
@@ -43,7 +43,7 @@ fn main() {
         .with_noise(radius_map)
         .generate();
     println!("num of points {:?}", points.len());
-    println!("{:?}", points);
+    // println!("{:?}", points);
 
     // too close check
     for point0 in points.iter() {
