@@ -17,6 +17,13 @@ use super::{Float, PoissonVariable};
 /// A Point is simply an array of Float values
 pub type Point<const N: usize> = [Float; N];
 
+/// A Point is simply an array of Float values
+#[derive(Debug, Clone)]
+pub struct PointWithRadius<const N: usize> {
+    pub point: Point<N>,
+    pub min_radius_squared: Float,
+}
+
 /// A Cell is the grid coordinates containing a given point
 type Cell<const N: usize> = [isize; N];
 
@@ -34,9 +41,9 @@ pub struct Iter<const N: usize> {
     /// The size of each cell in the grid
     cell_size: Float,
     /// The grid stores spatially-oriented samples for fast checking of neighboring sample points
-    grid: Vec<Option<Point<N>>>,
+    grid: Vec<Vec<PointWithRadius<N>>>,
     /// A list of valid points that we have not yet visited
-    active: Vec<Point<N>>,
+    active: Vec<PointWithRadius<N>>,
 }
 
 impl<const N: usize> Iter<N> {
@@ -69,8 +76,12 @@ impl<const N: usize> Iter<N> {
             distribution,
             rng,
             cell_size,
-            grid: vec![None; grid_size],
+            grid: vec![Vec::new(); grid_size],
             active: Vec::new(),
+        };
+        let first_point = PointWithRadius {
+            point: first_point,
+            min_radius_squared: iter.distribution.radius.powi(2),
         };
         // Don't forget to add our initial point
         iter.add_point(first_point);
@@ -79,13 +90,13 @@ impl<const N: usize> Iter<N> {
     }
 
     /// Add a point to our pattern
-    fn add_point(&mut self, point: Point<N>) {
+    fn add_point(&mut self, point: PointWithRadius<N>) {
         // Add it to the active list
-        self.active.push(point);
+        self.active.push(point.clone());
 
         // Now stash this point in our grid
-        let idx = self.point_to_idx(point);
-        self.grid[idx] = Some(point);
+        let idx = self.point_to_idx(point.point);
+        self.grid[idx].push(point);
     }
 
     /// Convert a point into grid cell coordinates
@@ -160,11 +171,8 @@ impl<const N: usize> Iter<N> {
     }
 
     /// Returns true if there is at least one other sample point within `radius` of this point
-    fn in_neighborhood(&self, point: Point<N>) -> bool {
-        let cell = self.point_to_cell(point);
-
-        // We'll compare to distance squared, so we can skip the square root operation for better performance
-        let r_squared = self.distribution.radius.powi(2);
+    fn in_neighborhood(&self, point: PointWithRadius<N>) -> bool {
+        let cell = self.point_to_cell(point.point);
 
         for mut carry in 0.. {
             let mut neighbor = cell;
@@ -186,14 +194,18 @@ impl<const N: usize> Iter<N> {
                 continue;
             }
 
-            if let Some(point2) = self.grid[self.cell_to_idx(neighbor)] {
+            for neighbor in self.grid[self.cell_to_idx(neighbor)].iter() {
                 let neighbor_dist_squared = point
+                    .point
                     .iter()
-                    .zip(point2.iter())
+                    .zip(neighbor.point.iter())
                     .map(|(a, b)| (a - b).powi(2))
                     .sum::<Float>();
 
-                if neighbor_dist_squared < r_squared {
+                // We'll compare to distance squared from both perspectives, so we can skip the square root operation for better performance
+                if neighbor_dist_squared < point.min_radius_squared
+                    && neighbor_dist_squared < neighbor.min_radius_squared
+                {
                     return true;
                 }
             }
@@ -213,15 +225,19 @@ impl<const N: usize> Iterator for Iter<N> {
 
             for _ in 0..self.distribution.num_samples {
                 // Generate up to `num_samples` random points between radius and 2*radius from the current point
-                let point = self.generate_random_point(self.active[i]);
+                let point = self.generate_random_point(self.active[i].point);
+                let point = PointWithRadius {
+                    point,
+                    min_radius_squared: self.distribution.radius.powi(2),
+                };
 
                 // Ensure we've picked a point inside the bounds of our rectangle, and more than `radius`
                 // distance from any other sampled point
-                if self.in_space(point) && !self.in_neighborhood(point) {
+                if self.in_space(point.point) && !self.in_neighborhood(point.clone()) {
                     // We've got a good one!
-                    self.add_point(point);
+                    self.add_point(point.clone());
 
-                    return Some(point);
+                    return Some(point.clone().point);
                 }
             }
 

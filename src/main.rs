@@ -18,4 +18,24 @@ fn main() {
         .with_samples(k)
         .generate();
     println!("num of points {:?}", points.len());
+    println!("num of points {:?}", points);
+
+    // too close check
+    for point0 in points.iter() {
+        for point1 in points.iter() {
+            if point0 != point1 {
+                let dist_squared = point0
+                    .iter()
+                    .zip(point1.iter())
+                    .map(|(a, b)| (a - b).powi(2))
+                    .sum::<f64>();
+                if dist_squared < r {
+                    println!(
+                        "{:?} and {:?} are too close. r^2 = {dist_squared}",
+                        point0, point1
+                    );
+                }
+            }
+        }
+    }
 }
