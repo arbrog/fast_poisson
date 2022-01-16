@@ -27,31 +27,21 @@ fn main() {
         .map(|n| (n / min_cell_size).ceil() as usize)
         .product();
 
-    let mut radius_map = vec![0.0; grid_size];
-    for (i, cell) in radius_map.iter_mut().enumerate() {
-        let y = i / grid_size;
-        let x = i % grid_size;
-        let value: f64 = (noise.get_noise(
-            x as f32 / (noise_grid_width as f32) * 2_f32,
-            y as f32 / (noise_grid_width as f32) * 2_f32,
-        ) + 0.5_f32)
-            .into();
-        *cell = (value * (r_max - r_min)) + r_min;
-    }
-
     let mut raw_noise_buffer =
         image::ImageBuffer::new(noise_grid_width as u32, noise_grid_width as u32);
 
-    for (x, y, pixel) in raw_noise_buffer.enumerate_pixels_mut() {
-        let value: f64 = (noise.get_noise(
-            x as f32 / (noise_grid_width as f32) * 2_f32,
-            y as f32 / (noise_grid_width as f32) * 2_f32,
-        ) + 0.5_f32)
-            .into();
+    let mut radius_map = vec![0.0; grid_size];
+    for (i, cell) in radius_map.iter_mut().enumerate() {
+        let y = i / noise_grid_width;
+        let x = i % noise_grid_width;
+        let value = (y * x + x) as f64;
+        let value: f64 = ((value - 0_f64) * (1_f64))
+            / ((noise_grid_width * noise_grid_width + noise_grid_width) as f64);
+        *cell = (value * (r_max - r_min)) + r_min;
+
         let value: u8 = 255 - ((value * 255_f64) as u8);
-        *pixel = image::Rgb([value, value, value]);
+        raw_noise_buffer.put_pixel(x as u32, y as u32, Rgb([value, value, value]));
     }
-    // println!("{:#?}", radius_map);
 
     let points = PoissonVariable2D::new()
         .with_dimensions([dim, dim], (r_min, r_max))
