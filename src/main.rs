@@ -1,12 +1,12 @@
 use bracket_noise::prelude::*;
 use fast_poisson::PoissonVariable2D;
-use image::Rgb;
-extern crate image;
+// use image::Rgb;
+// extern crate image;
 
 fn main() {
     let dim = 512.0;
-    let r_min = 2_f64;
-    let r_max = 16_f64;
+    let r_min = 1_f64;
+    let r_max = 32_f64;
     let k = 30;
     let seed = 123123;
 
@@ -27,8 +27,8 @@ fn main() {
         .map(|n| (n / min_cell_size).ceil() as usize)
         .product();
 
-    let mut raw_noise_buffer =
-        image::ImageBuffer::new(noise_grid_width as u32, noise_grid_width as u32);
+    // let mut raw_noise_buffer =
+    //     image::ImageBuffer::new(noise_grid_width as u32, noise_grid_width as u32);
 
     let mut radius_map = vec![0.0; grid_size];
     for (i, cell) in radius_map.iter_mut().enumerate() {
@@ -42,11 +42,11 @@ fn main() {
 
         *cell = (value * (r_max - r_min)) + r_min;
 
-        let value: u8 = (value * 255_f64) as u8;
-        raw_noise_buffer.put_pixel(x as u32, y as u32, Rgb([value, value, value]));
+        // let value: u8 = (value * 255_f64) as u8;
+        // raw_noise_buffer.put_pixel(x as u32, y as u32, Rgb([value, value, value]));
     }
 
-    raw_noise_buffer.save("noise.png").unwrap();
+    // raw_noise_buffer.save("noise.png").unwrap();
 
     let points = PoissonVariable2D::new()
         .with_dimensions([dim, dim], (r_min, r_max))
@@ -57,20 +57,20 @@ fn main() {
     println!("num of points {:?}", points.len());
 
     // Create a new ImgBuf with width: imgx and height: imgy
-    let mut points_buffer = image::ImageBuffer::new(dim as u32, dim as u32);
+    // let mut points_buffer = image::ImageBuffer::new(dim as u32, dim as u32);
 
-    // Iterate over the coordinates and pixels of the image
-    for (_, _, pixel) in points_buffer.enumerate_pixels_mut() {
-        *pixel = image::Rgb([255_u8, 255_u8, 255_u8]);
-    }
+    // // Iterate over the coordinates and pixels of the image
+    // for (_, _, pixel) in points_buffer.enumerate_pixels_mut() {
+    //     *pixel = image::Rgb([255_u8, 255_u8, 255_u8]);
+    // }
 
-    for point in points.iter() {
-        points_buffer.put_pixel(
-            point[0].floor() as u32,
-            point[1].floor() as u32,
-            Rgb([0_u8, 0, 0]),
-        );
-    }
+    // for point in points.iter() {
+    //     points_buffer.put_pixel(
+    //         point[0].floor() as u32,
+    //         point[1].floor() as u32,
+    //         Rgb([0_u8, 0, 0]),
+    //     );
+    // }
 
-    points_buffer.save("points.png").unwrap();
+    // points_buffer.save("points.png").unwrap();
 }
