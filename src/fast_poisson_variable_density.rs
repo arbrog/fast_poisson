@@ -39,7 +39,9 @@ pub struct Iter<const N: usize> {
     /// The RNG
     rng: Rand,
     /// The size of each cell in the grid
-    cell_size: Float,
+    max_cell_size: Float,
+    /// The size of each cell in the noise grid
+    min_cell_size: Float,
     /// The grid stores spatially-oriented samples for fast checking of neighboring sample points
     grid: Vec<Vec<PointWithRadius<N>>>,
     /// A list of valid points that we have not yet visited
@@ -50,7 +52,8 @@ impl<const N: usize> Iter<N> {
     /// Create an iterator over the specified distribution
     pub(crate) fn new(distribution: PoissonVariable<N>) -> Self {
         // We maintain a grid of our samples for faster radius checking
-        let cell_size = distribution.radius.1 / (N as Float).sqrt();
+        let max_cell_size = distribution.radius.1 / (N as Float).sqrt();
+        let min_cell_size = distribution.radius.0 / (N as Float).sqrt();
 
         // If we were not given a seed, generate one non-deterministically
         let mut rng = match distribution.seed {
@@ -63,7 +66,7 @@ impl<const N: usize> Iter<N> {
         let grid_size: usize = distribution
             .dimensions
             .iter()
-            .map(|n| (n / cell_size).ceil() as usize)
+            .map(|n| (n / max_cell_size).ceil() as usize)
             .product();
 
         // We have to generate an initial point, just to ensure we've got *something* in the active list
@@ -75,13 +78,16 @@ impl<const N: usize> Iter<N> {
         let mut iter = Iter {
             distribution,
             rng,
-            cell_size,
+            max_cell_size,
+            min_cell_size,
             grid: vec![Vec::new(); grid_size],
             active: Vec::new(),
         };
         let first_point = PointWithRadius {
             point: first_point,
-            min_radius_squared: iter.distribution.noise[iter.point_to_idx(first_point)].powi(2),
+            min_radius_squared: iter.distribution.noise
+                [iter.point_to_idx(first_point, iter.min_cell_size)]
+            .powi(2),
         };
         // Don't forget to add our initial point
         iter.add_point(first_point);
@@ -95,41 +101,44 @@ impl<const N: usize> Iter<N> {
         self.active.push(point.clone());
 
         // Now stash this point in our grid
-        let idx = self.point_to_idx(point.point);
+        let idx = self.point_to_idx(point.point, self.max_cell_size);
         self.grid[idx].push(point);
     }
 
     /// Convert a point into grid cell coordinates
-    pub fn point_to_cell(&self, point: Point<N>) -> Cell<N> {
+    pub fn point_to_cell(&self, point: Point<N>, cell_size: f64) -> Cell<N> {
         let mut cell = [0_isize; N];
 
         for i in 0..N {
-            cell[i] = (point[i] / self.cell_size) as isize;
+            cell[i] = (point[i] / cell_size) as isize;
         }
 
         cell
     }
 
     /// Convert a cell into a grid vector index
-    fn cell_to_idx(&self, cell: Cell<N>) -> usize {
+    fn cell_to_idx(&self, cell: Cell<N>, cell_size: f64) -> usize {
         cell.iter()
             .zip(self.distribution.dimensions.iter())
             .fold(0, |acc, (pn, dn)| {
-                acc * (dn / self.cell_size) as usize + *pn as usize
+                acc * (dn / cell_size).ceil() as usize + *pn as usize
             })
     }
 
     /// Convert a point into a grid vector index
-    fn point_to_idx(&self, point: Point<N>) -> usize {
-        self.cell_to_idx(self.point_to_cell(point))
+    fn point_to_idx(&self, point: Point<N>, cell_size: f64) -> usize {
+        let cell = self.point_to_cell(point, cell_size);
+        let index = self.cell_to_idx(cell, cell_size);
+
+        index
     }
 
     /// Generate a random point between `radius` and `2 * radius` away from the given point
     fn generate_random_point(&mut self, around: Point<N>) -> Point<N> {
         // Pick a random distance away from our point
 
-        let dist =
-            self.distribution.noise[self.point_to_idx(around)] * (1.0 + self.rng.gen::<Float>());
+        let dist = self.distribution.noise[self.point_to_idx(around, self.min_cell_size)]
+            * (1.0 + self.rng.gen::<Float>());
 
         // Generate a randomly distributed vector
         let mut vector: [Float; N] = [0.0; N];
@@ -169,18 +178,18 @@ impl<const N: usize> Iter<N> {
     fn in_grid(&self, cell: Cell<N>) -> bool {
         cell.iter()
             .zip(self.distribution.dimensions.iter())
-            .all(|(c, d)| *c >= 0 && *c < (*d / self.cell_size).ceil() as isize)
+            .all(|(c, d)| *c >= 0 && *c < (*d / self.max_cell_size).ceil() as isize)
     }
 
     /// Returns true if there is at least one other sample point within `radius` of this point
     fn in_neighborhood(&self, point: PointWithRadius<N>) -> bool {
-        let cell = self.point_to_cell(point.point);
+        let cell = self.point_to_cell(point.point, self.max_cell_size);
 
         for mut carry in 0.. {
-            let mut neighbor = cell;
+            let mut neighbor_cell = cell;
 
             // We can add our current iteration count to visit each neighbor cell
-            for i in (&mut neighbor).iter_mut() {
+            for i in (&mut neighbor_cell).iter_mut() {
                 // We clamp our addition to the range [-2, 2] for each cell
                 *i += carry % 5 - 2;
                 // Since we modulo by 5 to get the right range, integer division by 5 "advances" us
@@ -191,12 +200,12 @@ impl<const N: usize> Iter<N> {
                 // If we've "overflowed" then we've already tested every neighbor cell
                 return false;
             }
-            if !self.in_grid(neighbor) {
+            if !self.in_grid(neighbor_cell) {
                 // Skip anything beyond the bounds of our grid
                 continue;
             }
 
-            for neighbor in self.grid[self.cell_to_idx(neighbor)].iter() {
+            for neighbor in self.grid[self.cell_to_idx(neighbor_cell, self.max_cell_size)].iter() {
                 let neighbor_dist_squared = point
                     .point
                     .iter()
@@ -233,8 +242,9 @@ impl<const N: usize> Iterator for Iter<N> {
                 if self.in_space(point) {
                     let point = PointWithRadius {
                         point,
-                        min_radius_squared: self.distribution.noise[self.point_to_idx(point)]
-                            .powi(2),
+                        min_radius_squared: self.distribution.noise
+                            [self.point_to_idx(point, self.min_cell_size)]
+                        .powi(2),
                     };
 
                     // Ensure we've picked a point more than `radius` distance from any other sampled point
