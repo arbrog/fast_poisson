@@ -206,7 +206,7 @@ impl<const N: usize> Iter<N> {
 
                 // We'll compare to distance squared from both perspectives, so we can skip the square root operation for better performance
                 if neighbor_dist_squared < point.min_radius_squared
-                    && neighbor_dist_squared < neighbor.min_radius_squared
+                    || neighbor_dist_squared < neighbor.min_radius_squared
                 {
                     return true;
                 }

@@ -2,7 +2,7 @@ use bracket_noise::prelude::*;
 use fast_poisson::PoissonVariable2D;
 
 fn main() {
-    let dim = 3_f64;
+    let dim = 20_f64;
     let r_min = 1.0;
     let r_max = 2.0;
     let k = 30;
@@ -27,11 +27,10 @@ fn main() {
     for (i, cell) in radius_map.iter_mut().enumerate() {
         let y = i / grid_size;
         let x = i % grid_size;
-        let value: f64 = noise
-            .get_noise(
-                x as f32 / (dim as f32) * 2_f32,
-                y as f32 / (dim as f32) * 2_f32,
-            )
+        let value: f64 = (noise.get_noise(
+            x as f32 / (dim as f32) * 2_f32,
+            y as f32 / (dim as f32) * 2_f32,
+        ) + 0.5_f32)
             .into();
         *cell = (value * (r_max - r_min)) + r_min;
     }
@@ -44,7 +43,7 @@ fn main() {
         .with_noise(radius_map)
         .generate();
     println!("num of points {:?}", points.len());
-    println!("num of points {:?}", points);
+    println!("{:?}", points);
 
     // too close check
     for point0 in points.iter() {
