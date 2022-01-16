@@ -50,7 +50,7 @@ impl<const N: usize> Iter<N> {
     /// Create an iterator over the specified distribution
     pub(crate) fn new(distribution: PoissonVariable<N>) -> Self {
         // We maintain a grid of our samples for faster radius checking
-        let cell_size = distribution.radius / (N as Float).sqrt();
+        let cell_size = distribution.radius.1 / (N as Float).sqrt();
 
         // If we were not given a seed, generate one non-deterministically
         let mut rng = match distribution.seed {
@@ -81,7 +81,7 @@ impl<const N: usize> Iter<N> {
         };
         let first_point = PointWithRadius {
             point: first_point,
-            min_radius_squared: iter.distribution.radius.powi(2),
+            min_radius_squared: iter.distribution.noise[iter.point_to_idx(first_point)].powi(2),
         };
         // Don't forget to add our initial point
         iter.add_point(first_point);
@@ -100,7 +100,7 @@ impl<const N: usize> Iter<N> {
     }
 
     /// Convert a point into grid cell coordinates
-    fn point_to_cell(&self, point: Point<N>) -> Cell<N> {
+    pub fn point_to_cell(&self, point: Point<N>) -> Cell<N> {
         let mut cell = [0_isize; N];
 
         for i in 0..N {
@@ -127,7 +127,9 @@ impl<const N: usize> Iter<N> {
     /// Generate a random point between `radius` and `2 * radius` away from the given point
     fn generate_random_point(&mut self, around: Point<N>) -> Point<N> {
         // Pick a random distance away from our point
-        let dist = self.distribution.radius * (1.0 + self.rng.gen::<Float>());
+
+        let dist =
+            self.distribution.noise[self.point_to_idx(around)] * (1.0 + self.rng.gen::<Float>());
 
         // Generate a randomly distributed vector
         let mut vector: [Float; N] = [0.0; N];
@@ -226,18 +228,22 @@ impl<const N: usize> Iterator for Iter<N> {
             for _ in 0..self.distribution.num_samples {
                 // Generate up to `num_samples` random points between radius and 2*radius from the current point
                 let point = self.generate_random_point(self.active[i].point);
-                let point = PointWithRadius {
-                    point,
-                    min_radius_squared: self.distribution.radius.powi(2),
-                };
 
-                // Ensure we've picked a point inside the bounds of our rectangle, and more than `radius`
-                // distance from any other sampled point
-                if self.in_space(point.point) && !self.in_neighborhood(point.clone()) {
-                    // We've got a good one!
-                    self.add_point(point.clone());
+                // Ensure we've picked a point inside the bounds of our rectangle
+                if self.in_space(point) {
+                    let point = PointWithRadius {
+                        point,
+                        min_radius_squared: self.distribution.noise[self.point_to_idx(point)]
+                            .powi(2),
+                    };
 
-                    return Some(point.clone().point);
+                    // Ensure we've picked a point more than `radius` distance from any other sampled point
+                    if self.in_space(point.point) && !self.in_neighborhood(point.clone()) {
+                        // We've got a good one!
+                        self.add_point(point.clone());
+
+                        return Some(point.clone().point);
+                    }
                 }
             }
 

@@ -458,12 +458,14 @@ pub struct PoissonVariable<const N: usize> {
     /// Dimensions of the box
     #[cfg_attr(feature = "derive_serde", serde(with = "serde_arrays"))]
     dimensions: [Float; N],
-    /// Radius around each point that must remain empty
-    radius: Float,
+    /// (Radius Minimum, Radius Maximum) around each point that must remain empty
+    radius: (Float, Float),
     /// Seed to use for the internal RNG
     seed: Option<u64>,
     /// Number of samples to generate and test around each point
     num_samples: u32,
+    /// A function which returns the radius for a given point
+    noise: Vec<Float>,
 }
 
 impl<const N: usize> PoissonVariable<N> {
@@ -481,7 +483,7 @@ impl<const N: usize> PoissonVariable<N> {
         Self::default()
     }
 
-    pub fn with_dimensions(&mut self, dimensions: [Float; N], radius: Float) -> &mut Self {
+    pub fn with_dimensions(&mut self, dimensions: [Float; N], radius: (Float, Float)) -> &mut Self {
         self.dimensions = dimensions;
         self.radius = radius;
 
@@ -496,6 +498,12 @@ impl<const N: usize> PoissonVariable<N> {
 
     pub fn with_samples(&mut self, samples: u32) -> &mut Self {
         self.num_samples = samples;
+
+        self
+    }
+
+    pub fn with_noise(&mut self, noise: Vec<Float>) -> &mut Self {
+        self.noise = noise;
 
         self
     }
@@ -533,9 +541,10 @@ impl<const N: usize> Default for PoissonVariable<N> {
     fn default() -> Self {
         PoissonVariable::<N> {
             dimensions: [1.0; N],
-            radius: 0.1,
+            radius: (0.1, 0.1),
             seed: None,
             num_samples: 30,
+            noise: vec![0.0; N],
         }
     }
 }
