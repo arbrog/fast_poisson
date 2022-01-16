@@ -4,9 +4,9 @@ use image::Rgb;
 extern crate image;
 
 fn main() {
-    let dim = 512.0;
-    let r_min = 1.0;
-    let r_max = 8.0;
+    let dim = 32.0;
+    let r_min = 2_f64;
+    let r_max = 4_f64;
     let k = 30;
     let seed = 123123;
 
@@ -32,14 +32,24 @@ fn main() {
 
     let mut radius_map = vec![0.0; grid_size];
     for (i, cell) in radius_map.iter_mut().enumerate() {
-        let y = i / noise_grid_width;
-        let x = i % noise_grid_width;
-        let value = (y * x + x) as f64;
-        let value: f64 = ((value - 0_f64) * (1_f64))
-            / ((noise_grid_width * noise_grid_width + noise_grid_width) as f64);
+        let y = i % noise_grid_width;
+        let x = i / noise_grid_width;
+        let value = if y < (dim * 0.5) as usize {
+            0_f64
+        } else {
+            1_f64
+        };
         *cell = (value * (r_max - r_min)) + r_min;
 
-        let value: u8 = 255 - ((value * 255_f64) as u8);
+        let idx = [x, y]
+            .iter()
+            .zip([dim, dim].iter())
+            .fold(0, |acc, (pn, dn)| {
+                acc * (dn / min_cell_size) as usize + *pn as usize
+            });
+        println!("{i}: ({x},{y}): {cell}-> {idx}");
+
+        let value: u8 = (value * 255_f64) as u8;
         raw_noise_buffer.put_pixel(x as u32, y as u32, Rgb([value, value, value]));
     }
 

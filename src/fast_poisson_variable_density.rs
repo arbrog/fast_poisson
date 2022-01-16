@@ -127,7 +127,9 @@ impl<const N: usize> Iter<N> {
 
     /// Convert a point into a grid vector index
     fn point_to_idx(&self, point: Point<N>, cell_size: f64) -> usize {
-        self.cell_to_idx(self.point_to_cell(point, cell_size), cell_size)
+        let cell = self.point_to_cell(point, cell_size);
+        let index = self.cell_to_idx(cell, cell_size);
+        index
     }
 
     /// Generate a random point between `radius` and `2 * radius` away from the given point
