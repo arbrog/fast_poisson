@@ -121,7 +121,7 @@ impl<const N: usize> Iter<N> {
         cell.iter()
             .zip(self.distribution.dimensions.iter())
             .fold(0, |acc, (pn, dn)| {
-                acc * (dn / cell_size) as usize + *pn as usize
+                acc * (dn / cell_size).ceil() as usize + *pn as usize
             })
     }
 
@@ -129,6 +129,7 @@ impl<const N: usize> Iter<N> {
     fn point_to_idx(&self, point: Point<N>, cell_size: f64) -> usize {
         let cell = self.point_to_cell(point, cell_size);
         let index = self.cell_to_idx(cell, cell_size);
+
         index
     }
 

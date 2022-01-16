@@ -4,9 +4,9 @@ use image::Rgb;
 extern crate image;
 
 fn main() {
-    let dim = 32.0;
+    let dim = 512.0;
     let r_min = 2_f64;
-    let r_max = 4_f64;
+    let r_max = 16_f64;
     let k = 30;
     let seed = 123123;
 
@@ -14,7 +14,7 @@ fn main() {
     noise.set_noise_type(NoiseType::PerlinFractal);
     noise.set_fractal_type(FractalType::FBM);
     noise.set_fractal_octaves(5);
-    noise.set_fractal_gain(0.6);
+    noise.set_fractal_gain(0.5);
     noise.set_fractal_lacunarity(2.0);
     noise.set_frequency(2.0);
 
@@ -34,24 +34,19 @@ fn main() {
     for (i, cell) in radius_map.iter_mut().enumerate() {
         let y = i % noise_grid_width;
         let x = i / noise_grid_width;
-        let value = if y < (dim * 0.5) as usize {
-            0_f64
-        } else {
-            1_f64
-        };
-        *cell = (value * (r_max - r_min)) + r_min;
+        let value: f64 = (noise.get_noise(
+            x as f32 / (noise_grid_width as f32) * 2_f32,
+            y as f32 / (noise_grid_width as f32) * 2_f32,
+        ) + 0.5_f32)
+            .into();
 
-        let idx = [x, y]
-            .iter()
-            .zip([dim, dim].iter())
-            .fold(0, |acc, (pn, dn)| {
-                acc * (dn / min_cell_size) as usize + *pn as usize
-            });
-        println!("{i}: ({x},{y}): {cell}-> {idx}");
+        *cell = (value * (r_max - r_min)) + r_min;
 
         let value: u8 = (value * 255_f64) as u8;
         raw_noise_buffer.put_pixel(x as u32, y as u32, Rgb([value, value, value]));
     }
+
+    raw_noise_buffer.save("noise.png").unwrap();
 
     let points = PoissonVariable2D::new()
         .with_dimensions([dim, dim], (r_min, r_max))
@@ -77,6 +72,5 @@ fn main() {
         );
     }
 
-    raw_noise_buffer.save("noise.png").unwrap();
     points_buffer.save("points.png").unwrap();
 }
