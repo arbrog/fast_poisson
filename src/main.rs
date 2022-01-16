@@ -1,10 +1,12 @@
 use bracket_noise::prelude::*;
 use fast_poisson::PoissonVariable2D;
+use image::Rgb;
+extern crate image;
 
 fn main() {
-    let dim = 48.0;
+    let dim = 512.0;
     let r_min = 1.0;
-    let r_max = 2.0;
+    let r_max = 8.0;
     let k = 30;
     let seed = 123123;
 
@@ -18,6 +20,8 @@ fn main() {
 
     let min_cell_size: f64 = r_min / 2_f64.sqrt();
 
+    let noise_grid_width = (dim / min_cell_size).ceil() as usize;
+
     let grid_size: usize = [dim, dim]
         .iter()
         .map(|n| (n / min_cell_size).ceil() as usize)
@@ -28,11 +32,24 @@ fn main() {
         let y = i / grid_size;
         let x = i % grid_size;
         let value: f64 = (noise.get_noise(
-            x as f32 / (dim as f32) * 2_f32,
-            y as f32 / (dim as f32) * 2_f32,
+            x as f32 / (noise_grid_width as f32) * 2_f32,
+            y as f32 / (noise_grid_width as f32) * 2_f32,
         ) + 0.5_f32)
             .into();
         *cell = (value * (r_max - r_min)) + r_min;
+    }
+
+    let mut raw_noise_buffer =
+        image::ImageBuffer::new(noise_grid_width as u32, noise_grid_width as u32);
+
+    for (x, y, pixel) in raw_noise_buffer.enumerate_pixels_mut() {
+        let value: f64 = (noise.get_noise(
+            x as f32 / (noise_grid_width as f32) * 2_f32,
+            y as f32 / (noise_grid_width as f32) * 2_f32,
+        ) + 0.5_f32)
+            .into();
+        let value: u8 = 255 - ((value * 255_f64) as u8);
+        *pixel = image::Rgb([value, value, value]);
     }
     // println!("{:#?}", radius_map);
 
@@ -43,32 +60,23 @@ fn main() {
         .with_noise(radius_map)
         .generate();
     println!("num of points {:?}", points.len());
-    // println!("{:?}", points);
 
-    // too close check
-    for point0 in points.iter() {
-        for point1 in points.iter() {
-            if point0 != point1 {
-                let dist_squared = point0
-                    .iter()
-                    .zip(point1.iter())
-                    .map(|(a, b)| (a - b).powi(2))
-                    .sum::<f64>();
+    // Create a new ImgBuf with width: imgx and height: imgy
+    let mut points_buffer = image::ImageBuffer::new(dim as u32, dim as u32);
 
-                let scalar: f64 = noise
-                    .get_noise(
-                        point0[0] as f32 / dim as f32 * 2_f32,
-                        point0[1] as f32 / dim as f32 * 2_f32,
-                    )
-                    .into();
-                let radius = ((scalar * (r_max - r_min)) + r_min).powi(2);
-                if dist_squared < radius {
-                    println!(
-                        "{:?} and {:?} are too close. d^2 = {dist_squared} while r^2 is {radius}",
-                        point0, point1
-                    );
-                }
-            }
-        }
+    // Iterate over the coordinates and pixels of the image
+    for (_, _, pixel) in points_buffer.enumerate_pixels_mut() {
+        *pixel = image::Rgb([255_u8, 255_u8, 255_u8]);
     }
+
+    for point in points.iter() {
+        points_buffer.put_pixel(
+            point[0].floor() as u32,
+            point[1].floor() as u32,
+            Rgb([0_u8, 0, 0]),
+        );
+    }
+
+    raw_noise_buffer.save("noise.png").unwrap();
+    points_buffer.save("points.png").unwrap();
 }
